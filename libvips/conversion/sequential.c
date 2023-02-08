@@ -162,6 +162,8 @@ vips_sequential_generate(VipsRegion *out_region,
 
 		sequential->y_pos = VIPS_RECT_BOTTOM(&area);
 	}
+	else if (VIPS_RECT_BOTTOM(r) < sequential->y_pos)
+		r->height = sequential->y_pos - r->top;
 
 	/* This is a request for old or present pixels -- serve from cache.
 	 * This may trigger further, sequential reads.
@@ -173,8 +175,7 @@ vips_sequential_generate(VipsRegion *out_region,
 		return -1;
 	}
 
-	sequential->y_pos =
-		VIPS_MAX(sequential->y_pos, VIPS_RECT_BOTTOM(r));
+	sequential->y_pos = VIPS_RECT_BOTTOM(r);
 
 	g_mutex_unlock(sequential->lock);
 
