@@ -245,30 +245,6 @@ vips_tile_search(VipsBlockCache *cache, int x, int y)
 	return tile;
 }
 
-static void
-vips_tile_find_is_topper(gpointer element, gpointer user_data)
-{
-	VipsTile *this = (VipsTile *) element;
-	VipsTile **best = (VipsTile **) user_data;
-
-	if (!*best ||
-		this->pos.top < (*best)->pos.top)
-		*best = this;
-}
-
-/* Search the recycle list for the topmost tile.
- */
-static VipsTile *
-vips_tile_find_topmost(GQueue *recycle)
-{
-	VipsTile *tile;
-
-	tile = NULL;
-	g_queue_foreach(recycle, vips_tile_find_is_topper, &tile);
-
-	return tile;
-}
-
 /* Find existing tile, make a new tile, or if we have a full set of tiles,
  * reuse one.
  */
@@ -300,15 +276,8 @@ vips_tile_find(VipsBlockCache *cache, int x, int y)
 	/* Reuse an old one, if there are any. We just peek the tile pointer,
 	 * it is removed from the recycle list later on _ref.
 	 */
-	if (cache->recycle) {
-		if (cache->access == VIPS_ACCESS_RANDOM)
-			tile = g_queue_peek_head(cache->recycle);
-		else
-			/* This is slower :( We have to search the recycle
-			 * queue.
-			 */
-			tile = vips_tile_find_topmost(cache->recycle);
-	}
+	if (cache->recycle)
+		tile = g_queue_peek_head(cache->recycle);
 
 	if (!tile) {
 		/* There are no tiles we can reuse -- we have to make another
@@ -500,6 +469,21 @@ typedef VipsBlockCacheClass VipsTileCacheClass;
 
 G_DEFINE_TYPE(VipsTileCache, vips_tile_cache, VIPS_TYPE_BLOCK_CACHE);
 
+static int
+vips_tile_compare_top(gconstpointer a, gconstpointer b,
+	gpointer user_data)
+{
+	VipsTile *left = (VipsTile *) a;
+	VipsTile *right = (VipsTile *) b;
+
+	if (left->pos.top > right->pos.top)
+		return 1;
+	else if (left->pos.top == right->pos.top)
+		return 0;
+	else
+		return -1;
+}
+
 static void
 vips_tile_unref(VipsTile *tile)
 {
@@ -508,12 +492,19 @@ vips_tile_unref(VipsTile *tile)
 	tile->ref_count -= 1;
 
 	if (tile->ref_count == 0) {
-		/* Place at the end of the recycle queue. We pop from the
-		 * front when selecting an unused tile for reuse.
-		 */
 		g_assert(!g_queue_find(tile->cache->recycle, tile));
 
-		g_queue_push_tail(tile->cache->recycle, tile);
+		if (tile->cache->access == VIPS_ACCESS_RANDOM)
+			/* Place at the end of the recycle queue. We pop from
+			 * the front when selecting an unused tile for reuse.
+			 */
+			g_queue_push_tail(tile->cache->recycle, tile);
+		else
+			/* This is slower :( We need to make sure we have a
+			 * sorted queue.
+			 */
+			g_queue_insert_sorted(tile->cache->recycle, tile,
+				(GCompareDataFunc) vips_tile_compare_top, NULL);
 	}
 }
 
