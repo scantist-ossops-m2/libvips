@@ -152,7 +152,7 @@ vips_sequential_generate(VipsRegion *out_region,
 
 		area.left = 0;
 		area.top = sequential->y_pos;
-		area.width = 1;
+		area.width = r->width;
 		area.height = r->top - sequential->y_pos;
 		if (vips_region_prepare(ir, &area)) {
 			sequential->error = -1;
